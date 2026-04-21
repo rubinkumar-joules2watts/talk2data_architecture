@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talk2Data — System Architecture</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --text-primary:   #2C2C2A;
+  --text-secondary: #5F5E5A;
+  --text-tertiary:  #888780;
+  --border-light:   #DDDBD3;
+  --page-bg:        #F7F6F2;
+
+  /* colour tokens */
+  --blue-bg:#E6F1FB;   --blue-bd:#85B7EB;   --blue-lbl:#185FA5;  --blue-chip:#B5D4F4;  --blue-ct:#042C53;
+  --green-bg:#E1F5EE;  --green-bd:#5DCAA5;  --green-lbl:#0F6E56; --green-chip:#9FE1CB; --green-ct:#04342C;
+  --purple-bg:#EEEDFE; --purple-bd:#AFA9EC; --purple-lbl:#534AB7;--purple-chip:#CECBF6;--purple-ct:#26215C;
+  --amber-bg:#FAEEDA;  --amber-bd:#EF9F27;  --amber-lbl:#854F0B; --amber-chip:#FAC775; --amber-ct:#412402;
+  --red-bg:#FAECE7;    --red-bd:#F0997B;    --red-lbl:#993C1D;   --red-chip:#F5C4B3;   --red-ct:#4A1B0C;
+  --sage-bg:#EAF3DE;   --sage-bd:#97C459;   --sage-lbl:#3B6D11;  --sage-chip:#C0DD97;  --sage-ct:#173404;
+  --stone-bg:#F1EFE8;  --stone-bd:#B4B2A9;  --stone-lbl:#5F5E5A; --stone-chip:#D3D1C7; --stone-ct:#2C2C2A;
+  --teal-bg:#E0F4F6;   --teal-bd:#4BBDCC;   --teal-lbl:#0C5F6B;  --teal-chip:#9FD9E0;  --teal-ct:#04303A;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* ── base elements ── */
+.chip   { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:20px; letter-spacing:.02em; }
+.dot    { width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+.lbl    { font-size:10.5px; font-weight:600; letter-spacing:.065em; text-transform:uppercase; margin-bottom:8px; }
+.sub    { font-size:11px; color:var(--text-secondary); }
+
+/* ── cards ── */
+.card {
+  border-radius:12px; padding:12px 14px;
+  cursor:pointer;
+  transition: box-shadow .18s, transform .18s;
+  position:relative;
+}
+.card:hover  { box-shadow:0 3px 14px rgba(0,0,0,.10); transform:translateY(-1px); }
+.card.active { transform:translateY(-1px); }
+
+/* ── pipe connectors ── */
+.pipe-wrap {
+  display:flex; align-items:stretch;
+  gap:0; height:38px; margin:0;
+}
+.pipe-col {
+  flex:1; display:flex; flex-direction:column; align-items:center;
+  position:relative;
+}
+.pipe-line {
+  width:1.5px; flex:1;
+  background:var(--border-light);
+  transition:background .25s;
+  margin:0 auto;
+}
+.pipe-line.lit { background: linear-gradient(180deg,#7F77DD,#1D9E75); }
+.pipe-lbl {
+  font-size:9.5px; color:var(--text-tertiary);
+  letter-spacing:.03em; white-space:nowrap;
+  text-align:center; line-height:1;
+  margin-bottom:2px;
+  max-width:140px; overflow:hidden; text-overflow:ellipsis;
+}
+.pipe-arrow { font-size:11px; color:var(--text-tertiary); line-height:1; }
+
+/* horizontal pipe */
+.h-pipe {
+  height:1.5px; flex:1;
+  background:var(--border-light);
+  transition:background .25s; align-self:center;
+}
+.h-pipe.lit { background:linear-gradient(90deg,#7F77DD,#1D9E75); }
+
+/* ── detail panel ── */
+.panel {
+  display:none; border-radius:10px; padding:14px 16px;
+  margin-top:6px; border-top:2px dashed;
+  animation: slideDown .2s ease;
+  position:relative;
+}
+.panel.open { display:block; }
+@keyframes slideDown { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+.close-btn {
+  position:absolute; top:10px; right:12px;
+  font-size:11px; color:var(--text-tertiary);
+  cursor:pointer; background:rgba(0,0,0,.06);
+  border:none; border-radius:4px; padding:2px 8px; font-family:inherit;
+}
+.close-btn:hover { background:rgba(0,0,0,.12); }
+
+.detail-grid { display:grid; gap:7px; }
+.d-item { border-radius:8px; padding:9px 11px; }
+.d-title { font-size:12px; font-weight:600; margin-bottom:3px; }
+.d-desc  { font-size:11px; line-height:1.45; }
+
+/* flow mini steps */
+.flow-row {
+  display:flex; align-items:center; flex-wrap:wrap; gap:4px;
+  margin-top:10px; padding-top:9px; border-top:1px solid rgba(0,0,0,.07);
+}
+.fstep {
+  font-size:11px; font-weight:500; border-radius:4px; padding:3px 9px;
+}
+.fsep { font-size:11px; color:var(--text-tertiary); }
+
+/* jump link */
+.jlink {
+  display:inline-block; font-size:10.5px; border-radius:3px;
+  padding:2px 7px; border:1px solid; cursor:pointer;
+  transition:opacity .15s; margin:1px;
+}
+.jlink:hover { opacity:.7; }
+
+/* tech tags */
+.ttag {
+  font-size:10px; background:rgba(0,0,0,.06); border-radius:3px;
+  padding:2px 7px; color:var(--text-secondary); letter-spacing:.02em;
+}
+.tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+
+/* phase divider */
+.phase-divider {
+  display:flex; align-items:center; gap:10px;
+  margin:6px 0 0;
+}
+.phase-line { flex:1; height:1px; background:var(--border-light); }
+.phase-badge {
+  font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+  padding:3px 10px; border-radius:20px; white-space:nowrap;
+}
+
+/* AI service badge floating */
+.ai-badge {
+  position:absolute; right:-2px; top:8px;
+  font-size:9.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+  padding:2px 8px; border-radius:3px;
+  background:var(--amber-chip); color:var(--amber-ct);
+  border:1px solid var(--amber-bd);
+}
+
+/* observability side rail */
+.obs-rail {
+  position:absolute; right:-118px; top:0; bottom:0;
+  width:110px; display:flex; flex-direction:column; align-items:center; gap:4px;
+}
+
+/* two-col, three-col */
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.g4 { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+
+@media(max-width:680px){
+  .g2,.g3,.g4 { grid-template-columns:1fr 1fr !important; }
+}
+
+/* wrap */
+.wrap { padding:20px 18px 30px; max-width:860px; margin:0 auto; position:relative; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ══════════════════════════ HEADER ══════════════════════════ -->
+<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+  <div>
+    <div style="font-size:20px;font-weight:500;color:var(--text-primary);margin-bottom:3px;">Talk2Data — System Architecture</div>
+    <div class="sub">Natural language → data insights &nbsp;·&nbsp; Click any layer to expand &nbsp;·&nbsp; Jump links connect related layers</div>
+  </div>
+  <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;">
+    <span class="chip" style="background:var(--blue-bg);color:var(--blue-lbl);">Frontend</span>
+    <span class="chip" style="background:var(--green-bg);color:var(--green-lbl);">Auth &amp; KB</span>
+    <span class="chip" style="background:var(--purple-bg);color:var(--purple-lbl);">Intelligence</span>
+    <span class="chip" style="background:var(--amber-bg);color:var(--amber-lbl);">AI Service</span>
+    <span class="chip" style="background:var(--sage-bg);color:var(--sage-lbl);">Response</span>
+    <span class="chip" style="background:var(--stone-bg);color:var(--stone-lbl);">Storage</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════ 1. USER ══════════════════════════ -->
+<div style="display:flex;justify-content:center;">
+  <div class="card" id="c-user" onclick="tog('user')"
+    style="background:var(--stone-bg);border:.5px solid var(--stone-bd);width:230px;text-align:center;padding:10px 20px;border-radius:10px;">
+    <div style="font-size:22px;margin-bottom:3px;">👤</div>
+    <div style="font-size:13px;font-weight:500;">User</div>
+    <div class="sub" style="font-size:11px;">Types a question in natural language</div>
+  </div>
+</div>
+<div class="panel" id="p-user" style="background:#F4F3ED;border-color:var(--stone-bd);max-width:420px;margin:6px auto 0;">
+  <button class="close-btn" onclick="tog('user')">✕</button>
+  <div class="d-item" style="background:var(--stone-chip);">
+    <div class="d-title" style="color:var(--stone-ct);">Natural language input</div>
+    <div class="d-desc" style="color:var(--stone-lbl);">e.g. <em>"What are the most common issues detected that lead to higher repair costs?"</em> — sent to the Chat Interface in the Web App, routed through the full pipeline.</div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--blue-chip);color:var(--blue-ct);">Query → Web App</span>
+    <span class="fsep">→</span>
+    <span class="jlink" style="background:var(--green-bg);border-color:var(--green-bd);color:var(--green-lbl);" onclick="jump('auth')">Auth ↗</span>
+    <span class="fsep">→</span>
+    <span class="jlink" style="background:var(--purple-bg);border-color:var(--purple-bd);color:var(--purple-lbl);" onclick="jump('chat')">Chat Processing ↗</span>
+  </div>
+</div>
+
+<!-- pipe 1 -->
+<div class="pipe-wrap" id="pw-1">
+  <div class="pipe-col">
+    <div class="pipe-lbl">Authentication &amp; onboarding</div>
+    <div class="pipe-line" id="pl-1"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ 2. WEB APP ══════════════════════════ -->
+<div class="card" id="c-web" onclick="tog('web')"
+  style="background:var(--blue-bg);border:.5px solid var(--blue-bd);">
+  <div class="lbl" style="color:var(--blue-lbl);">Web Application</div>
+  <div class="g4">
+    <div style="background:var(--blue-chip);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--blue-ct);">Onboarding UI</div>
+    </div>
+    <div style="background:var(--blue-chip);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--blue-ct);">Data source config</div>
+    </div>
+    <div style="background:var(--blue-chip);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--blue-ct);">Knowledge base upload</div>
+    </div>
+    <div style="background:var(--blue-chip);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--blue-ct);">Chat interface</div>
+    </div>
+  </div>
+</div>
+<div class="panel" id="p-web" style="background:#EDF5FC;border-color:var(--blue-bd);">
+  <button class="close-btn" onclick="tog('web')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--blue-lbl);margin-bottom:8px;">Frontend — React / Next.js</div>
+  <div class="g4">
+    <div class="d-item" style="background:var(--blue-chip);">
+      <div class="d-title" style="color:var(--blue-ct);">Onboarding UI</div>
+      <div class="d-desc" style="color:var(--blue-lbl);">Step-by-step workspace setup, invites user to connect data sources and configure persona.</div>
+    </div>
+    <div class="d-item" style="background:var(--blue-chip);">
+      <div class="d-title" style="color:var(--blue-ct);">Data source config</div>
+      <div class="d-desc" style="color:var(--blue-lbl);">Manage connector credentials. Save triggers the Data Source Connector pipeline.</div>
+    </div>
+    <div class="d-item" style="background:var(--blue-chip);">
+      <div class="d-title" style="color:var(--blue-ct);">Knowledge base upload</div>
+      <div class="d-desc" style="color:var(--blue-lbl);">Upload PDFs / CSVs / DOCX. Feeds the KB ingestion pipeline for chunking &amp; embedding.</div>
+    </div>
+    <div class="d-item" style="background:var(--blue-chip);">
+      <div class="d-title" style="color:var(--blue-ct);">Chat interface</div>
+      <div class="d-desc" style="color:var(--blue-lbl);">Primary NL query surface. Streams AI responses — charts, tables, narrative insights.</div>
+    </div>
+  </div>
+  <div class="flow-row">
+    <span style="font-size:11px;color:var(--text-secondary);margin-right:4px;">Routes to:</span>
+    <span class="jlink" style="background:var(--green-bg);border-color:var(--green-bd);color:var(--green-lbl);" onclick="jump('auth')">Auth ↗</span>
+    <span class="jlink" style="background:var(--amber-bg);border-color:var(--amber-bd);color:var(--amber-lbl);" onclick="jump('kb')">KB Upload ↗</span>
+    <span class="jlink" style="background:var(--purple-bg);border-color:var(--purple-bd);color:var(--purple-lbl);" onclick="jump('ds')">Data Sources ↗</span>
+    <span class="jlink" style="background:var(--teal-bg);border-color:var(--teal-bd);color:var(--teal-lbl);" onclick="jump('chat')">Chat Processing ↗</span>
+  </div>
+  <div class="tags"><span class="ttag">React / Next.js</span><span class="ttag">TailwindCSS</span><span class="ttag">Supabase Client</span><span class="ttag">WebSockets / SSE</span></div>
+</div>
+
+<!-- pipe 2: three branches -->
+<div class="pipe-wrap" id="pw-2" style="height:44px;">
+  <div class="pipe-col">
+    <div class="pipe-lbl">Sessions &amp; roles</div>
+    <div class="pipe-line" id="pl-2a"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+  <div class="pipe-col">
+    <div class="pipe-lbl">File upload for KB</div>
+    <div class="pipe-line" id="pl-2b"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+  <div class="pipe-col">
+    <div class="pipe-lbl">Connector credentials</div>
+    <div class="pipe-line" id="pl-2c"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- phase label: SETUP -->
+<div class="phase-divider">
+  <div class="phase-line"></div>
+  <span class="phase-badge" style="background:var(--green-bg);color:var(--green-lbl);border:1px solid var(--green-bd);">⚙ Setup &amp; Context Building</span>
+  <div class="phase-line"></div>
+</div>
+<div style="height:6px;"></div>
+
+<!-- ══════════════════════════ 3. AUTH  |  KB  |  DATA SOURCE ══════════════════════════ -->
+<div style="display:grid;grid-template-columns:1fr 1.4fr 1.4fr;gap:8px;">
+
+  <!-- AUTH -->
+  <div class="card" id="c-auth" onclick="tog('auth')"
+    style="background:var(--green-bg);border:.5px solid var(--green-bd);">
+    <div class="lbl" style="color:var(--green-lbl);">Authentication</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="background:var(--green-chip);border-radius:8px;padding:7px 10px;">
+        <div style="font-size:12px;font-weight:500;color:var(--green-ct);">Supabase Auth</div>
+        <div style="font-size:11px;color:var(--green-lbl);">Login · sessions · JWT · RLS</div>
+      </div>
+      <div style="background:var(--green-chip);border-radius:8px;padding:7px 10px;">
+        <div style="font-size:12px;font-weight:500;color:var(--green-ct);">User Persona Service</div>
+        <div style="font-size:11px;color:var(--green-lbl);">Roles · access scopes</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KB UPLOAD -->
+  <div class="card" id="c-kb" onclick="tog('kb')"
+    style="background:var(--amber-bg);border:.5px solid var(--amber-bd);">
+    <div class="lbl" style="color:var(--amber-lbl);">Knowledge Base Upload</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <div style="background:var(--amber-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">File Ingestion</div>
+        <div style="font-size:11px;color:var(--amber-lbl);">Redis queue · upload svc</div>
+      </div>
+      <div style="background:var(--amber-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">Chunking Engine</div>
+        <div style="font-size:11px;color:var(--amber-lbl);">Semantic splits</div>
+      </div>
+      <div style="background:var(--amber-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">Embedding Generator</div>
+        <div style="font-size:11px;color:var(--amber-lbl);">Vector embeddings</div>
+      </div>
+      <div style="background:var(--amber-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">Metadata Tagger</div>
+        <div style="font-size:11px;color:var(--amber-lbl);">Source · page · domain</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
+      <div style="background:var(--amber-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">Vector DB</div>
+        <div style="font-size:11px;color:var(--amber-lbl);">pgvector · ANN search</div>
+      </div>
+      <div style="background:var(--amber-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">Blob / Cloud Storage</div>
+        <div style="font-size:11px;color:var(--amber-lbl);">Raw file archive</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DATA SOURCE CONNECTORS -->
+  <div class="card" id="c-ds" onclick="tog('ds')"
+    style="background:var(--purple-bg);border:.5px solid var(--purple-bd);">
+    <div class="lbl" style="color:var(--purple-lbl);">Data Source Connectors</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <div style="background:var(--purple-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--purple-ct);">Connection Validation</div>
+        <div style="font-size:11px;color:var(--purple-lbl);">Credentials · connectivity test</div>
+      </div>
+      <div style="background:var(--purple-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--purple-ct);">Connector Service</div>
+        <div style="font-size:11px;color:var(--purple-lbl);">Postgres · MySQL · SQLite · MongoDB · Supabase · Snowflake…</div>
+      </div>
+      <div style="background:var(--purple-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--purple-ct);">Schema Extractor</div>
+        <div style="font-size:11px;color:var(--purple-lbl);">Tables · columns · types · relations</div>
+      </div>
+      <div style="background:var(--purple-chip);border-radius:8px;padding:7px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--purple-ct);">Semantic Metadata</div>
+        <div style="font-size:11px;color:var(--purple-lbl);">Business context for SQL engine</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- detail: auth -->
+<div class="panel" id="p-auth" style="background:#EBF8F3;border-color:var(--green-bd);">
+  <button class="close-btn" onclick="tog('auth')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--green-lbl);margin-bottom:8px;">Security layer — Supabase + JWT</div>
+  <div class="g2">
+    <div class="d-item" style="background:var(--green-chip);">
+      <div class="d-title" style="color:var(--green-ct);">Supabase Auth</div>
+      <div class="d-desc" style="color:var(--green-lbl);">JWT session management, OAuth (Google / GitHub), refresh tokens. Row-Level Security enforced on all DB operations.</div>
+    </div>
+    <div class="d-item" style="background:var(--green-chip);">
+      <div class="d-title" style="color:var(--green-ct);">User Persona Service</div>
+      <div class="d-desc" style="color:var(--green-lbl);">Maps each user to roles, data-access scopes, and query context preferences. Persona is attached to every downstream request.</div>
+    </div>
+  </div>
+  <div class="tags"><span class="ttag">Supabase Auth</span><span class="ttag">JWT</span><span class="ttag">OAuth 2.0</span><span class="ttag">Row-Level Security</span><span class="ttag">FastAPI Middleware</span></div>
+</div>
+
+<!-- detail: kb -->
+<div class="panel" id="p-kb" style="background:#FDF5E7;border-color:var(--amber-bd);">
+  <button class="close-btn" onclick="tog('kb')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--amber-lbl);margin-bottom:8px;">Knowledge base — primary context engine (RAG pipeline)</div>
+  <div class="g3">
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">File Ingestion</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">Redis queue + Celery workers + File upload service. Async, decoupled from the UI. Supports PDFs, CSVs, DOCX.</div>
+    </div>
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">Chunking Engine</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">Splits docs into semantically coherent chunks with configurable overlap for precise retrieval.</div>
+    </div>
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">Embedding Generator</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">Converts chunks to high-dimensional vectors via OpenAI / custom models. Feeds Vector DB.</div>
+    </div>
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">Metadata Tagger</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">Attaches source file, page, chunk index, domain tags. Enables filtered similarity search at query time.</div>
+    </div>
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">Vector DB (pgvector)</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">Stores embeddings. ANN cosine/dot-product search returns top-K relevant chunks as KB context at query time.</div>
+    </div>
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">Blob / Cloud Storage</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">S3-compatible store for raw uploaded files and processed chunk artifacts. Audit &amp; re-processing.</div>
+    </div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--blue-chip);color:var(--blue-ct);">File Upload</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--amber-chip);color:var(--amber-ct);">Redis Queue</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--amber-chip);color:var(--amber-ct);">Celery Workers</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--amber-chip);color:var(--amber-ct);">Chunk → Embed → Tag</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--amber-chip);color:var(--amber-ct);">Vector DB + Blob</span>
+  </div>
+  <div class="tags"><span class="ttag">pgvector</span><span class="ttag">LangChain</span><span class="ttag">OpenAI Embeddings</span><span class="ttag">Redis + Celery</span><span class="ttag">S3 / Supabase Storage</span></div>
+</div>
+
+<!-- detail: ds -->
+<div class="panel" id="p-ds" style="background:#F3F2FE;border-color:var(--purple-bd);">
+  <button class="close-btn" onclick="tog('ds')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--purple-lbl);margin-bottom:8px;">Data source connectors — schema &amp; semantic extraction</div>
+  <div class="g4">
+    <div class="d-item" style="background:var(--purple-chip);">
+      <div class="d-title" style="color:var(--purple-ct);">Connection Validation</div>
+      <div class="d-desc" style="color:var(--purple-lbl);">Tests credentials and confirms read access before registering the data source.</div>
+    </div>
+    <div class="d-item" style="background:var(--purple-chip);">
+      <div class="d-title" style="color:var(--purple-ct);">Connector Service</div>
+      <div class="d-desc" style="color:var(--purple-lbl);">Active connections to PostgreSQL, MySQL, SQLite, MongoDB, Supabase, Snowflake, and more. Connection pooling + failover.</div>
+    </div>
+    <div class="d-item" style="background:var(--purple-chip);">
+      <div class="d-title" style="color:var(--purple-ct);">Schema Extractor</div>
+      <div class="d-desc" style="color:var(--purple-lbl);">Introspects tables, columns, data types, relationships. Stored as structured metadata.</div>
+    </div>
+    <div class="d-item" style="background:var(--purple-chip);">
+      <div class="d-title" style="color:var(--purple-ct);">Semantic Metadata</div>
+      <div class="d-desc" style="color:var(--purple-lbl);">Business-level descriptions attached to tables/columns. Acts as the <strong>foremost context layer</strong> for the SQL Generation engine.</div>
+    </div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--blue-chip);color:var(--blue-ct);">Save Connector</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--purple-chip);color:var(--purple-ct);">Validate</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--purple-chip);color:var(--purple-ct);">Connect</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--purple-chip);color:var(--purple-ct);">Extract Schema</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--purple-chip);color:var(--purple-ct);">Semantic Metadata</span>
+    <span class="fsep">→</span>
+    <span class="jlink" style="background:var(--teal-bg);border-color:var(--teal-bd);color:var(--teal-lbl);" onclick="jump('sqlgen')">SQL Engine ↗</span>
+  </div>
+  <div class="tags"><span class="ttag">SQLAlchemy</span><span class="ttag">FastAPI</span><span class="ttag">Redis Cache</span><span class="ttag">Supabase DB</span></div>
+</div>
+
+<!-- context storage note -->
+<div style="margin-top:8px;padding:9px 14px;background:#EEEDFE;border:1px dashed var(--purple-bd);border-radius:8px;display:flex;align-items:center;gap:10px;">
+  <span style="font-size:18px;">🧩</span>
+  <div>
+    <span style="font-size:11px;font-weight:600;color:var(--purple-lbl);">Context Store (feeds SQL Generation):</span>
+    <span style="font-size:11px;color:var(--purple-lbl);">&nbsp; KB embeddings (Vector DB) &nbsp;+&nbsp; Semantic metadata (schema) &nbsp;+&nbsp; User persona &nbsp;→ injected into SQL Generation prompt</span>
+  </div>
+</div>
+
+<!-- pipe 3 -->
+<div class="pipe-wrap" id="pw-3" style="height:38px;">
+  <div class="pipe-col">
+    <div class="pipe-lbl">User sends query via Chat interface</div>
+    <div class="pipe-line" id="pl-3"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- phase label: QUERY -->
+<div class="phase-divider">
+  <div class="phase-line"></div>
+  <span class="phase-badge" style="background:var(--teal-bg);color:var(--teal-lbl);border:1px solid var(--teal-bd);">⚡ Query Processing Flow</span>
+  <div class="phase-line"></div>
+</div>
+<div style="height:6px;"></div>
+
+<!-- ══════════════════════════ 4. CHAT PROCESSING ══════════════════════════ -->
+<div class="card" id="c-chat" onclick="tog('chat')"
+  style="background:var(--teal-bg);border:.5px solid var(--teal-bd);position:relative;">
+  <div class="lbl" style="color:var(--teal-lbl);">Chat Processing</div>
+  <div class="g4">
+    <div style="background:var(--teal-chip);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--teal-ct);">Chat API</div>
+      <div style="font-size:11px;color:var(--teal-lbl);">REST · WebSocket</div>
+    </div>
+    <div style="background:var(--teal-chip);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--teal-ct);">Guardrails</div>
+      <div style="font-size:11px;color:var(--teal-lbl);">Safety · policy · PII</div>
+    </div>
+    <div style="background:var(--teal-chip);border-radius:8px;padding:8px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--teal-ct);">Intent Extractor</div>
+      <div style="font-size:11px;color:var(--teal-lbl);">NLU · classify · entities</div>
+    </div>
+    <div style="background:var(--amber-chip);border-radius:8px;padding:8px;text-align:center;border:1px dashed var(--amber-bd);">
+      <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">AI Service</div>
+      <div style="font-size:11px;color:var(--amber-lbl);">Drives intent extraction</div>
+    </div>
+  </div>
+</div>
+<div class="panel" id="p-chat" style="background:#E5F6F8;border-color:var(--teal-bd);">
+  <button class="close-btn" onclick="tog('chat')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--teal-lbl);margin-bottom:8px;">Chat processing — gateway &amp; intent pipeline</div>
+  <div class="g4">
+    <div class="d-item" style="background:var(--teal-chip);">
+      <div class="d-title" style="color:var(--teal-ct);">Chat API</div>
+      <div class="d-desc" style="color:var(--teal-lbl);">REST + WebSocket endpoint. Accepts user messages, maintains conversation history, streams response back to UI.</div>
+    </div>
+    <div class="d-item" style="background:var(--teal-chip);">
+      <div class="d-title" style="color:var(--teal-ct);">Guardrails</div>
+      <div class="d-desc" style="color:var(--teal-lbl);">Filters PII, blocks prompt injection, enforces data-access policies. Rejects or rewrites non-compliant queries before AI routing.</div>
+    </div>
+    <div class="d-item" style="background:var(--teal-chip);">
+      <div class="d-title" style="color:var(--teal-ct);">Intent Extractor</div>
+      <div class="d-desc" style="color:var(--teal-lbl);">Powered by the AI Service. Classifies query type (aggregate / filter / trend) and extracts entities — table refs, date ranges, metrics.</div>
+    </div>
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">AI Service</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">LLM call (Azure OpenAI / OpenAI / Bedrock / Vertex AI) to understand the user query and produce structured intent JSON.</div>
+    </div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--teal-chip);color:var(--teal-ct);">Chat API receives query</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--red-chip);color:var(--red-ct);">Guardrails check</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--amber-chip);color:var(--amber-ct);">AI Service → extract intents</span>
+    <span class="fsep">→</span>
+    <span class="jlink" style="background:var(--purple-bg);border-color:var(--purple-bd);color:var(--purple-lbl);" onclick="jump('cache')">Cache Layer ↗</span>
+  </div>
+  <div class="tags"><span class="ttag">FastAPI</span><span class="ttag">LangChain</span><span class="ttag">Pydantic</span><span class="ttag">WebSocket / SSE</span><span class="ttag">Redis (history)</span></div>
+</div>
+
+<!-- pipe 4 -->
+<div class="pipe-wrap" id="pw-4" style="height:38px;">
+  <div class="pipe-col">
+    <div class="pipe-lbl">Extracted intents → cache check</div>
+    <div class="pipe-line" id="pl-4"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ 5. CACHE LAYER ══════════════════════════ -->
+<div class="card" id="c-cache" onclick="tog('cache')"
+  style="background:var(--purple-bg);border:.5px solid var(--purple-bd);">
+  <div class="lbl" style="color:var(--purple-lbl);">Cache Layer</div>
+  <div class="g2">
+    <div style="background:var(--purple-chip);border-radius:8px;padding:8px 10px;">
+      <div style="font-size:12px;font-weight:500;color:var(--purple-ct);">Semantic similarity check</div>
+      <div style="font-size:11px;color:var(--purple-lbl);">Same or similar query? → Cache HIT</div>
+    </div>
+    <div style="background:var(--purple-chip);border-radius:8px;padding:8px 10px;">
+      <div style="font-size:12px;font-weight:500;color:var(--purple-ct);">Redis cache store</div>
+      <div style="font-size:11px;color:var(--purple-lbl);">Cache MISS → proceed to SQL generation</div>
+    </div>
+  </div>
+</div>
+<div class="panel" id="p-cache" style="background:#F3F2FE;border-color:var(--purple-bd);">
+  <button class="close-btn" onclick="tog('cache')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--purple-lbl);margin-bottom:8px;">Cache layer — Redis-backed semantic query cache</div>
+  <div class="g2">
+    <div class="d-item" style="background:var(--purple-chip);">
+      <div class="d-title" style="color:var(--purple-ct);">Semantic Similarity Check</div>
+      <div class="d-desc" style="color:var(--purple-lbl);">Embeds the incoming query and computes cosine similarity against cached query embeddings. If similarity exceeds threshold → Cache HIT, returns stored SQL result instantly (sub-100ms).</div>
+    </div>
+    <div class="d-item" style="background:var(--purple-chip);">
+      <div class="d-title" style="color:var(--purple-ct);">Redis Cache Store</div>
+      <div class="d-desc" style="color:var(--purple-lbl);">Stores query embeddings keyed against generated SQL + result payloads. Cache MISS routes to the SQL Generation layer. Results are written back after successful execution.</div>
+    </div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--teal-chip);color:var(--teal-ct);">Intent in</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--purple-chip);color:var(--purple-ct);">Embed query</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--green-chip);color:var(--green-ct);">HIT → return result</span>
+    <span style="font-size:11px;color:var(--text-tertiary);padding:0 4px;">/</span>
+    <span class="jlink" style="background:var(--red-bg);border-color:var(--red-bd);color:var(--red-lbl);" onclick="jump('sqlgen')">MISS → SQL Generation ↗</span>
+  </div>
+  <div class="tags"><span class="ttag">Redis</span><span class="ttag">pgvector (similarity)</span><span class="ttag">OpenAI Embeddings</span></div>
+</div>
+
+<!-- pipe 5 -->
+<div class="pipe-wrap" id="pw-5" style="height:38px;">
+  <div class="pipe-col">
+    <div class="pipe-lbl">Cache MISS → generate SQL</div>
+    <div class="pipe-line" id="pl-5"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ 6. SQL GENERATION ══════════════════════════ -->
+<div class="card" id="c-sqlgen" onclick="tog('sqlgen')"
+  style="background:var(--purple-bg);border:.5px solid var(--purple-bd);">
+  <div class="lbl" style="color:var(--purple-lbl);">SQL Generation</div>
+  <div style="display:grid;grid-template-columns:1.2fr 1.2fr 1.2fr 1fr;gap:8px;">
+    <div style="background:var(--amber-chip);border-radius:8px;padding:8px 9px;border:1px dashed var(--amber-bd);">
+      <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">KB Context</div>
+      <div style="font-size:11px;color:var(--amber-lbl);">Vector retrieval (top-K)</div>
+    </div>
+    <div style="background:var(--purple-chip);border-radius:8px;padding:8px 9px;border:1px dashed var(--purple-bd);">
+      <div style="font-size:12px;font-weight:500;color:var(--purple-ct);">Semantic Metadata</div>
+      <div style="font-size:11px;color:var(--purple-lbl);">Schema + business terms</div>
+    </div>
+    <div style="background:var(--teal-chip);border-radius:8px;padding:8px 9px;border:1px dashed var(--teal-bd);">
+      <div style="font-size:12px;font-weight:500;color:var(--teal-ct);">Extracted Intents</div>
+      <div style="font-size:11px;color:var(--teal-lbl);">Entities + query type</div>
+    </div>
+    <div style="background:var(--amber-chip);border-radius:8px;padding:8px 9px;border:1px dashed var(--amber-bd);">
+      <div style="font-size:12px;font-weight:500;color:var(--amber-ct);">AI Service</div>
+      <div style="font-size:11px;color:var(--amber-lbl);">Generates SQL</div>
+    </div>
+  </div>
+</div>
+<div class="panel" id="p-sqlgen" style="background:#F3F2FE;border-color:var(--purple-bd);">
+  <button class="close-btn" onclick="tog('sqlgen')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--purple-lbl);margin-bottom:8px;">SQL generation — context-enriched NL → SQL via AI Service</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:8px;">
+    <div class="d-item" style="background:var(--amber-chip);">
+      <div class="d-title" style="color:var(--amber-ct);">KB Context (top-K retrieval)</div>
+      <div class="d-desc" style="color:var(--amber-lbl);">Similarity search on Vector DB fetches the most relevant knowledge chunks and injects them as context.</div>
+    </div>
+    <div class="d-item" style="background:var(--purple-chip);">
+      <div class="d-title" style="color:var(--purple-ct);">Semantic Metadata</div>
+      <div class="d-desc" style="color:var(--purple-lbl);">Schema + business-level descriptions from the Data Source Connectors. Foremost base context for the LLM.</div>
+    </div>
+    <div class="d-item" style="background:var(--teal-chip);">
+      <div class="d-title" style="color:var(--teal-ct);">Extracted Intents</div>
+      <div class="d-desc" style="color:var(--teal-lbl);">Structured intent JSON from Chat Processing — query type, entities, date ranges, aggregation needs.</div>
+    </div>
+  </div>
+  <div class="d-item" style="background:var(--amber-chip);margin-bottom:7px;">
+    <div class="d-title" style="color:var(--amber-ct);">AI Service (LLM) — SQL Generator</div>
+    <div class="d-desc" style="color:var(--amber-lbl);">
+      Prompt = <strong>System instructions</strong> + <strong>Semantic Metadata</strong> + <strong>KB Context</strong> + <strong>User intent</strong>.<br>
+      Generates dialect-aware SQL (PostgreSQL, MySQL, Snowflake, etc.). Output is validated before execution.
+    </div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--amber-chip);color:var(--amber-ct);">KB + Schema + Intent → LLM</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--purple-chip);color:var(--purple-ct);">Generated SQL</span>
+    <span class="fsep">→</span>
+    <span class="jlink" style="background:var(--red-bg);border-color:var(--red-bd);color:var(--red-lbl);" onclick="jump('sqlexec')">SQL Execution ↗</span>
+  </div>
+  <div class="tags"><span class="ttag">LangGraph</span><span class="ttag">LangChain</span><span class="ttag">Azure OpenAI / OpenAI / Bedrock / Vertex</span><span class="ttag">pgvector retrieval</span></div>
+</div>
+
+<!-- pipe 6 -->
+<div class="pipe-wrap" id="pw-6" style="height:38px;">
+  <div class="pipe-col">
+    <div class="pipe-lbl">Generated SQL → validate &amp; execute</div>
+    <div class="pipe-line" id="pl-6"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ 7. SQL EXECUTION + REPAIR ══════════════════════════ -->
+<div class="card" id="c-sqlexec" onclick="tog('sqlexec')"
+  style="background:var(--red-bg);border:.5px solid var(--red-bd);">
+  <div class="lbl" style="color:var(--red-lbl);">SQL Execution &amp; Repair</div>
+  <div class="g2">
+    <div style="background:var(--red-chip);border-radius:8px;padding:8px 10px;">
+      <div style="font-size:12px;font-weight:500;color:var(--red-ct);">SQL Execution Engine</div>
+      <div style="font-size:11px;color:var(--red-lbl);">Runs query · connection pool · result stream</div>
+    </div>
+    <div style="background:var(--red-chip);border-radius:8px;padding:8px 10px;">
+      <div style="font-size:12px;font-weight:500;color:var(--red-ct);">SQL Repair Layer</div>
+      <div style="font-size:11px;color:var(--red-lbl);">Error → AI regenerate → retry (up to N iterations)</div>
+    </div>
+  </div>
+</div>
+<div class="panel" id="p-sqlexec" style="background:#FEF3EF;border-color:var(--red-bd);">
+  <button class="close-btn" onclick="tog('sqlexec')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--red-lbl);margin-bottom:8px;">SQL execution — self-healing execution engine</div>
+  <div class="g2">
+    <div class="d-item" style="background:var(--red-chip);">
+      <div class="d-title" style="color:var(--red-ct);">SQL Execution Engine</div>
+      <div class="d-desc" style="color:var(--red-lbl);">Runs parameterised queries via SQLAlchemy against the connected data source. Handles connection pooling, timeouts, result streaming.</div>
+    </div>
+    <div class="d-item" style="background:var(--red-chip);">
+      <div class="d-title" style="color:var(--red-ct);">SQL Repair Layer (AI Service)</div>
+      <div class="d-desc" style="color:var(--red-lbl);">On error (syntax, schema mismatch, permissions): sends the failed query + error message back to the AI Service for correction and retries — up to N iterations — before surfacing the error.</div>
+    </div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--purple-chip);color:var(--purple-ct);">SQL in</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--red-chip);color:var(--red-ct);">Execute</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--red-chip);color:var(--red-ct);">Error? → AI Repair → Retry</span>
+    <span class="fsep">→</span>
+    <span class="jlink" style="background:var(--sage-bg);border-color:var(--sage-bd);color:var(--sage-lbl);" onclick="jump('resp')">Response Generation ↗</span>
+  </div>
+  <div class="tags"><span class="ttag">SQLAlchemy</span><span class="ttag">FastAPI</span><span class="ttag">AI Repair Loop</span><span class="ttag">Connection Pooling</span></div>
+</div>
+
+<!-- pipe 7 -->
+<div class="pipe-wrap" id="pw-7" style="height:38px;">
+  <div class="pipe-col">
+    <div class="pipe-lbl">Query results → response agents</div>
+    <div class="pipe-line" id="pl-7"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ 8. RESPONSE GENERATION ══════════════════════════ -->
+<div class="card" id="c-resp" onclick="tog('resp')"
+  style="background:var(--sage-bg);border:.5px solid var(--sage-bd);">
+  <div class="lbl" style="color:var(--sage-lbl);">Response Generation <span style="font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;margin-left:4px;opacity:.7;">(AI-powered agents)</span></div>
+  <div class="g3">
+    <div style="background:var(--sage-chip);border-radius:8px;padding:8px 10px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--sage-ct);">Data Preview Agent</div>
+      <div style="font-size:11px;color:var(--sage-lbl);">Tables · paginated results</div>
+    </div>
+    <div style="background:var(--sage-chip);border-radius:8px;padding:8px 10px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--sage-ct);">Visualisation Agent</div>
+      <div style="font-size:11px;color:var(--sage-lbl);">Charts · graphs · auto-select</div>
+    </div>
+    <div style="background:var(--sage-chip);border-radius:8px;padding:8px 10px;text-align:center;">
+      <div style="font-size:12px;font-weight:500;color:var(--sage-ct);">Insights Agent</div>
+      <div style="font-size:11px;color:var(--sage-lbl);">Summary · anomalies · recs</div>
+    </div>
+  </div>
+  <div style="margin-top:7px;padding:6px 10px;background:var(--amber-chip);border-radius:7px;border:1px dashed var(--amber-bd);display:flex;align-items:center;gap:8px;">
+    <span style="font-size:11px;font-weight:600;color:var(--amber-ct);">AI Service</span>
+    <span style="font-size:11px;color:var(--amber-lbl);">All three agents are driven by the AI Service (LLM calls) for intelligence-layer output</span>
+  </div>
+</div>
+<div class="panel" id="p-resp" style="background:#EDF7E2;border-color:var(--sage-bd);">
+  <button class="close-btn" onclick="tog('resp')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--sage-lbl);margin-bottom:8px;">Response generation — three AI-powered agents</div>
+  <div class="g3">
+    <div class="d-item" style="background:var(--sage-chip);">
+      <div class="d-title" style="color:var(--sage-ct);">Data Preview Agent</div>
+      <div class="d-desc" style="color:var(--sage-lbl);">Formats raw SQL results into paginated, sortable tables. Column type detection. Returns structured JSON for Chat UI rendering. Powered by AI Service for smart formatting decisions.</div>
+    </div>
+    <div class="d-item" style="background:var(--sage-chip);">
+      <div class="d-title" style="color:var(--sage-ct);">Visualisation Agent</div>
+      <div class="d-desc" style="color:var(--sage-lbl);">AI-powered chart type selection (bar, line, scatter, pie, time-series) based on data shape and query intent. Generates Recharts / D3 spec. Powered by AI Service.</div>
+    </div>
+    <div class="d-item" style="background:var(--sage-chip);">
+      <div class="d-title" style="color:var(--sage-ct);">Insights Agent</div>
+      <div class="d-desc" style="color:var(--sage-lbl);">Sends results + original question to AI Service. Produces executive-level NL summary, anomaly callouts, trend highlights, and follow-up question suggestions.</div>
+    </div>
+  </div>
+  <div class="d-item" style="background:var(--amber-chip);margin-top:7px;">
+    <div class="d-title" style="color:var(--amber-ct);">AI Service (LLM) — multi-provider</div>
+    <div class="d-desc" style="color:var(--amber-lbl);">Azure OpenAI · OpenAI · AWS Bedrock (Claude, Llama) · Google Vertex AI (Gemini). Routed via a unified LLM Gateway with failover, token tracking, and cost monitoring.</div>
+  </div>
+  <div class="flow-row">
+    <span class="fstep" style="background:var(--red-chip);color:var(--red-ct);">SQL results in</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--sage-chip);color:var(--sage-ct);">Preview + Viz + Insights (parallel)</span>
+    <span class="fsep">→</span>
+    <span class="fstep" style="background:var(--blue-chip);color:var(--blue-ct);">Stream to Chat UI</span>
+  </div>
+  <div class="tags"><span class="ttag">LangGraph agents</span><span class="ttag">Recharts / D3</span><span class="ttag">Pandas</span><span class="ttag">FastAPI SSE</span><span class="ttag">Azure OAI / OpenAI / Bedrock / Vertex</span></div>
+</div>
+
+<!-- pipe 8 — two outputs: observability + user -->
+<div class="pipe-wrap" id="pw-8" style="height:44px;">
+  <div class="pipe-col" style="flex:1.5;">
+    <div class="pipe-lbl">Response streamed to user</div>
+    <div class="pipe-line" id="pl-8a"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+  <div class="pipe-col" style="flex:1;">
+    <div class="pipe-lbl">All events → observability</div>
+    <div class="pipe-line" id="pl-8b"></div>
+    <div class="pipe-arrow">↓</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ 9. OBSERVABILITY + RESPONSE RETURN ══════════════════════════ -->
+<div style="display:grid;grid-template-columns:1.8fr 1fr;gap:8px;align-items:start;">
+
+  <!-- RESPONSE TO USER -->
+  <div style="background:var(--sage-bg);border:.5px solid var(--sage-bd);border-radius:10px;padding:10px 16px;text-align:center;">
+    <div style="font-size:13px;font-weight:500;color:var(--sage-ct);">↩ Response to User</div>
+    <div style="font-size:11px;color:var(--sage-lbl);margin-top:2px;">Chart &nbsp;·&nbsp; Table &nbsp;·&nbsp; Narrative insight &nbsp;·&nbsp; Recommendations</div>
+  </div>
+
+  <!-- OBSERVABILITY -->
+  <div class="card" id="c-obs" onclick="tog('obs')"
+    style="background:var(--stone-bg);border:.5px solid var(--stone-bd);padding:10px 12px;">
+    <div class="lbl" style="color:var(--stone-lbl);">Observability</div>
+    <div style="display:flex;flex-direction:column;gap:5px;">
+      <div style="background:var(--stone-chip);border-radius:7px;padding:6px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--stone-ct);">Execution logs</div>
+        <div style="font-size:11px;color:var(--stone-lbl);">SQL runs · latency · errors</div>
+      </div>
+      <div style="background:var(--stone-chip);border-radius:7px;padding:6px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--stone-ct);">LLM traces</div>
+        <div style="font-size:11px;color:var(--stone-lbl);">Token usage · cost · repairs</div>
+      </div>
+      <div style="background:var(--stone-chip);border-radius:7px;padding:6px 9px;">
+        <div style="font-size:12px;font-weight:500;color:var(--stone-ct);">Query audit trail</div>
+        <div style="font-size:11px;color:var(--stone-lbl);">User · time · result shape</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- detail: obs -->
+<div class="panel" id="p-obs" style="background:#F4F3ED;border-color:var(--stone-bd);">
+  <button class="close-btn" onclick="tog('obs')">✕</button>
+  <div style="font-size:12px;font-weight:600;color:var(--stone-lbl);margin-bottom:8px;">Observability — full-stack tracking &amp; audit</div>
+  <div class="g3">
+    <div class="d-item" style="background:var(--stone-chip);">
+      <div class="d-title" style="color:var(--stone-ct);">Execution Logs</div>
+      <div class="d-desc" style="color:var(--stone-lbl);">Every SQL execution recorded: query text, data source, result row count, latency, repair attempts, and final status.</div>
+    </div>
+    <div class="d-item" style="background:var(--stone-chip);">
+      <div class="d-title" style="color:var(--stone-ct);">LLM Traces</div>
+      <div class="d-desc" style="color:var(--stone-lbl);">Token usage per request, model used, cost estimate, prompt structure, and response quality signals.</div>
+    </div>
+    <div class="d-item" style="background:var(--stone-chip);">
+      <div class="d-title" style="color:var(--stone-ct);">Query Audit Trail</div>
+      <div class="d-desc" style="color:var(--stone-lbl);">User ID, timestamp, raw NL query, generated SQL, cache hit/miss, and final response type — stored for compliance and debugging.</div>
+    </div>
+  </div>
+  <div class="tags"><span class="ttag">Supabase DB</span><span class="ttag">Blob Storage (logs)</span><span class="ttag">LangSmith / Langfuse</span><span class="ttag">Redis metrics</span></div>
+</div>
+
+<!-- LEGEND -->
+<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:20px;padding-top:14px;border-top:.5px solid var(--border-light);">
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#378ADD;"></span><span style="font-size:11px;color:var(--text-secondary);">Frontend</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#1D9E75;"></span><span style="font-size:11px;color:var(--text-secondary);">Auth</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#BA7517;"></span><span style="font-size:11px;color:var(--text-secondary);">KB &amp; Data setup</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#4BBDCC;"></span><span style="font-size:11px;color:var(--text-secondary);">Chat processing</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#7F77DD;"></span><span style="font-size:11px;color:var(--text-secondary);">Intelligence</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#D85A30;"></span><span style="font-size:11px;color:var(--text-secondary);">SQL execution</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#5B9E2A;"></span><span style="font-size:11px;color:var(--text-secondary);">Response</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#EF9F27;"></span><span style="font-size:11px;color:var(--text-secondary);">AI Service</span></div>
+  <div style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:#888780;"></span><span style="font-size:11px;color:var(--text-secondary);">Storage &amp; Observability</span></div>
+  <div style="margin-left:auto;font-size:11px;color:var(--text-tertiary);">Click any layer to expand · Jump links connect related layers</div>
+</div>
+
+</div><!-- /wrap -->
+
+<script>
+const open = new Set();
+
+// Pipes to light up per card
+const pipes = {
+  user:    ['pl-1'],
+  web:     ['pl-1','pl-2a','pl-2b','pl-2c'],
+  auth:    ['pl-2a'],
+  kb:      ['pl-2b'],
+  ds:      ['pl-2c'],
+  chat:    ['pl-3','pl-4'],
+  cache:   ['pl-4','pl-5'],
+  sqlgen:  ['pl-5','pl-6'],
+  sqlexec: ['pl-6','pl-7'],
+  resp:    ['pl-7','pl-8a','pl-8b'],
+  obs:     ['pl-8b'],
+};
+
+function tog(id) {
+  const panel = document.getElementById('p-' + id);
+  const card  = document.getElementById('c-' + id);
+  if (!panel) return;
+  const isOpen = panel.classList.contains('open');
+  if (isOpen) {
+    panel.classList.remove('open');
+    if (card) card.classList.remove('active');
+    open.delete(id);
+  } else {
+    panel.classList.add('open');
+    if (card) card.classList.add('active');
+    open.add(id);
+  }
+  refreshPipes();
+}
+
+function refreshPipes() {
+  document.querySelectorAll('.pipe-line').forEach(p => p.classList.remove('lit'));
+  open.forEach(id => {
+    (pipes[id] || []).forEach(pid => {
+      const el = document.getElementById(pid);
+      if (el) el.classList.add('lit');
+    });
+  });
+}
+
+function jump(id) {
+  const card = document.getElementById('c-' + id);
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const panel = document.getElementById('p-' + id);
+  if (panel && !panel.classList.contains('open')) tog(id);
+  // flash ring
+  card.style.outline = '2.5px solid #534AB7';
+  card.style.outlineOffset = '2px';
+  setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 900);
+}
+</script>
+</body>
+</html>
